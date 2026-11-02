@@ -1,0 +1,82 @@
+name: 5s cinematic animation 1080p 30fps
+on:
+  push:
+    branches: [main]
+    paths:
+      - cinematic_v3/**
+      - .github/workflows/cinematic_5s.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  render:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Blender, glTF dependencies and FFmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y blender python3-numpy ffmpeg fonts-dejavu-core
+          blender --version
+      - name: Download publicly licensed character mesh components
+        run: |
+          mkdir -p cinematic_v3/downloaded
+          python3 - <<'PY'
+          import pathlib,urllib.request
+          base='https://raw.githubusercontent.com/kblood/CharacterCreator/852e48f316b90a0937234886630e4fb4cdfd1f78/output/'
+          root=pathlib.Path('cinematic_v3/downloaded')
+          parts={'base_body.glb':7000000,'hair_short02.glb':1000000,'clothing_tshirt.glb':350000,'clothing_shirt.glb':500000,'clothing_jeans.glb':400000,'clothing_shoes.glb':800000}
+          for file,minimum in parts.items():
+              dst=root/file
+              urllib.request.urlretrieve(base+file,dst)
+              assert dst.stat().st_size>minimum,(file,dst.stat().st_size)
+              print('DOWNLOADED',file,dst.stat().st_size)
+          PY
+      - name: Python syntax check
+        run: python3 -m py_compile cinematic_v3/scene.py
+      - name: Render seven visual proof frames
+        env:
+          SAMPLES: '16'
+          SCALE: '50'
+        run: |
+          blender -b -noaudio --python cinematic_v3/scene.py -- --stills > cinematic-stills.log 2>&1 || { tail -n 120 cinematic-stills.log; exit 1; }
+          grep -E 'IMPORTED|CHARACTER_READY|SCENE_READY|STILL_DONE' cinematic-stills.log
+          test -s cinematic_v3/output/still_069.png
+      - name: Render animated frames
+        env:
+          SAMPLES: '16'
+          SCALE: '50'
+        run: |
+          blender -b -noaudio --python cinematic_v3/scene.py -- --render > cinematic-render.log 2>&1 || { tail -n 160 cinematic-render.log; exit 1; }
+          grep -E 'ALL_FRAMES_RENDERED|SCENE_READY' cinematic-render.log
+          test -s cinematic_v3/output/frame_0150.png
+      - name: Encode MP4 from original SRT
+        run: |
+          ffmpeg -hide_banner -y -framerate 30 -start_number 1 -i cinematic_v3/output/frame_%04d.png -t 5 -vf "subtitles=assets/opening_original.srt:force_style='FontName=DejaVu Sans,FontSize=25,Alignment=2,MarginV=45,Outline=1,Shadow=0'" -c:v libx264 -crf 18 -pix_fmt yuv420p -r 30 -movflags +faststart cinematic_v3/output/BlenderMedi_5s_cinematic.mp4
+          ffprobe -v error -show_entries format=duration -show_entries stream=codec_name,width,height,r_frame_rate -of json cinematic_v3/output/BlenderMedi_5s_cinematic.mp4
+      - name: Verify complete MP4
+        run: |
+          test -s cinematic_v3/output/BlenderMedi_5s_cinematic.blend
+          test -s cinematic_v3/output/BlenderMedi_5s_cinematic.mp4
+          python3 - <<'PY'
+          import json,subprocess
+          f='cinematic_v3/output/BlenderMedi_5s_cinematic.mp4'
+          q=json.loads(subprocess.check_output(['ffprobe','-v','error','-show_entries','format=duration','-show_entries','stream=width,height,r_frame_rate','-of','json',f]))
+          assert abs(float(q['format']['duration'])-5)<.12,q
+          assert q['streams'][0]['r_frame_rate']=='30/1',q
+          print('ENCODE_VERIFIED',q)
+          PY
+      - name: Upload project, MP4 and review stills
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: BlenderMedi-5s-cinematic-v3
+          path: |
+            cinematic_v3/output/BlenderMedi_5s_cinematic.blend
+            cinematic_v3/output/BlenderMedi_5s_cinematic.mp4
+            cinematic_v3/output/still_*.png
+            cinematic-stills.log
+            cinematic-render.log
+          if-no-files-found: warn
+          retention-days: 14
