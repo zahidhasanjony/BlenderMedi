@@ -17,13 +17,13 @@ jobs:
       - name: Install Blender
         run: |
           sudo apt-get update
-          sudo apt-get install -y blender
+          sudo apt-get install -y blender python3-numpy
           blender --version
       - name: Syntax check and create Blender assets
         run: |
           python3 -m py_compile cinematic_assets/build_assets.py
           cd cinematic_assets
-          SAMPLES=8 PREVIEW_PERCENT=45 blender -b -noaudio --python build_assets.py -- --export-glb --previews
+          SAMPLES=48 PREVIEW_PERCENT=65 blender -b -noaudio --python build_assets.py -- --export-glb --previews
       - name: Verify assets and preview stills
         run: |
           python3 - <<'PY'
@@ -33,7 +33,9 @@ jobs:
               p=d/n
               assert p.exists() and p.stat().st_size>1000, f'Missing or empty: {p}'
               print(n, p.stat().st_size)
-          for p in d.glob('*.glb'):
+          for n in ['male_character.glb','bedroom_environment.glb','medicine_cabinet.glb']:
+              p=d/n
+              assert p.exists() and p.stat().st_size>1000, f'Missing GLB: {p}'
               print('Reusable glTF asset:',p.name,p.stat().st_size)
           PY
       - name: Upload editable assets and review stills
