@@ -1,0 +1,76 @@
+name: Blender 10-second cinematic render
+on:
+  push:
+    branches: [main]
+    paths:
+      - blender_scene.py
+      - assets/**
+      - .github/workflows/blender_render.yml
+  workflow_dispatch:
+    inputs:
+      scale:
+        description: "Resolution percent (60 draft, 100 full)"
+        required: true
+        default: "60"
+      samples:
+        description: "Cycles samples (8 draft, 24 higher quality)"
+        required: true
+        default: "8"
+permissions:
+  contents: read
+jobs:
+  render:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Blender and FFmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y blender ffmpeg fonts-dejavu-core
+          blender --version
+      - name: Render scene with Blender
+        env:
+          SCALE: ${{ github.event.inputs.scale || '60' }}
+          SAMPLES: ${{ github.event.inputs.samples || '8' }}
+          OPENBLAS_NUM_THREADS: '1'
+        run: |
+          mkdir -p output
+          blender -b -noaudio --python blender_scene.py -- --render
+      - name: Generate original sound effects
+        run: |
+          python3 - <<'PY'
+          import math, wave, struct, random
+          random.seed(7)
+          sr=22050
+          with wave.open('output/sfx.wav','wb') as f:
+              f.setnchannels(1);f.setsampwidth(2);f.setframerate(sr)
+              buf=[]
+              for i in range(10*sr):
+                  t=i/sr
+                  v=0
+                  for start,freq,length,amp in [(0,96,.33,.42),(.48,74,.28,.25),(1.5,78,.28,.19),(3.1,125,.18,.16),(4.53,92,.3,.27),(6.6,210,.21,.14),(8.2,135,.38,.20)]:
+                      dt=t-start
+                      if 0<=dt<length:
+                          env=(1-dt/length)**2
+                          v+=amp*env*(math.sin(2*math.pi*freq*dt)+.14*math.sin(2*math.pi*freq*2*dt))
+                  buf.append(struct.pack('<h',max(-32767,min(32767,int(v*22000)))))
+              f.writeframes(b''.join(buf))
+          PY
+      - name: Encode subtitles and 60fps MP4
+        run: |
+          ffmpeg -hide_banner -y -framerate 60 -start_number 1 -i output/f_%04d.png \
+            -i output/sfx.wav -vf "subtitles=assets/opening_original.srt:force_style='FontName=DejaVu Sans,FontSize=20,Alignment=2,MarginV=36,Outline=1,Shadow=0'" \
+            -t 10 -c:v libx264 -crf 19 -preset medium -pix_fmt yuv420p -c:a aac -b:a 128k \
+            -movflags +faststart output/expired_medicine_blender_10s.mp4
+          ffprobe -v error -show_entries format=duration,size -show_entries stream=codec_name,width,height,r_frame_rate -of json output/expired_medicine_blender_10s.mp4
+      - name: Upload cloud render and Blender project
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: BlenderMedi-10s-cinematic
+          path: |
+            output/expired_medicine_blender_10s.mp4
+            output/expired_medicine.blend
+          if-no-files-found: warn
+          retention-days: 14
