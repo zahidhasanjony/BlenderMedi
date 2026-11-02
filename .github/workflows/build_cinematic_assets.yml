@@ -1,0 +1,49 @@
+name: Build cinematic 3D assets (5s test)
+on:
+  push:
+    branches: [main]
+    paths:
+      - cinematic_assets/**
+      - .github/workflows/build_cinematic_assets.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  assets:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 110
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Blender
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y blender
+          blender --version
+      - name: Syntax check and create Blender assets
+        run: |
+          python3 -m py_compile cinematic_assets/build_assets.py
+          cd cinematic_assets
+          SAMPLES=8 PREVIEW_PERCENT=45 blender -b -noaudio --python build_assets.py -- --export-glb --previews
+      - name: Verify assets and preview stills
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          d=Path('cinematic_assets/output')
+          for n in ['BlenderMedi_stylized_assets.blend','bedroom_wide.png','character_face.png','clock_closeup.png','medicine_closeup.png']:
+              p=d/n
+              assert p.exists() and p.stat().st_size>1000, f'Missing or empty: {p}'
+              print(n, p.stat().st_size)
+          for p in d.glob('*.glb'):
+              print('Reusable glTF asset:',p.name,p.stat().st_size)
+          PY
+      - name: Upload editable assets and review stills
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: BlenderMedi-cinematic-asset-library
+          path: |
+            cinematic_assets/output/*.blend
+            cinematic_assets/output/*.glb
+            cinematic_assets/output/*.png
+          if-no-files-found: warn
+          retention-days: 14
