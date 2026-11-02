@@ -384,7 +384,7 @@ if '--export-glb' in sys.argv:
         except Exception as ex: print('GLB_EXPORT_FAILED',f,str(ex))
         bpy.ops.object.select_all(action='DESELECT')
 if '--previews' in sys.argv:
-    scene.render.resolution_percentage=int(os.getenv('PREVIEW_PERCENT','45'))
+    scene.render.resolution_percentage=int(os.getenv('PREVIEW_PERCENT','65'))
     for name,c in cams.items():
         scene.camera=c
         scene.render.filepath=str(OUT/(name+'.png'))
