@@ -14,7 +14,7 @@ bpy.ops.object.delete(use_global=False)
 scene=bpy.context.scene
 scene.render.engine=os.getenv('RENDER_ENGINE','CYCLES')
 if scene.render.engine=='CYCLES':
-    scene.cycles.samples=int(os.getenv('SAMPLES','8'))
+    scene.cycles.samples=int(os.getenv('SAMPLES','20'))
     # Ubuntu's Blender package may not have OpenImageDenoiser.
     scene.cycles.use_denoising=False
     for view_layer in scene.view_layers:
@@ -22,7 +22,7 @@ if scene.render.engine=='CYCLES':
             view_layer.cycles.use_denoising=False
 scene.render.resolution_x=1920
 scene.render.resolution_y=1080
-scene.render.resolution_percentage=45
+scene.render.resolution_percentage=60
 scene.render.fps=30
 scene.render.image_settings.file_format='PNG'
 scene.render.film_transparent=False
@@ -144,9 +144,11 @@ def text3(n,body,pos,size,mat,col):
     return o
 
 def keep_parent(o, parent):
-    world=o.matrix_world.copy()
+    # Explicit matrix-parent-inverse: preserve the object's world transform.
+    # The old assignment/restoration moved nested head parts on Blender 4.0.
     o.parent=parent
-    o.matrix_world=world
+    o.matrix_parent_inverse=parent.matrix_world.inverted()
+
 
 def controller(name,pos,size):
     o=bpy.data.objects.new(name,None)
@@ -335,7 +337,7 @@ def cam(name,pos,target,focal):
     return o
 cams={
  'bedroom_wide':cam('CAM_Bedroom_master',(0,-7.6,2.43),(-.8,1.0,1.70),38),
- 'character_face':cam('CAM_Man_headache',(-.80,-3.44,2.42),(-1.10,-.14,2.39),75),
+ 'character_face':cam('CAM_Man_headache',(-.85,-4.7,2.48),(-1.10,-.14,2.39),68),
  'clock_closeup':cam('CAM_2AM_clock',(-.27,-.19,1.34),(-.32,1.75,1.065),84),
  'medicine_closeup':cam('CAM_Expired_bottle',(4.08,.18,1.45),(4.04,2.92,1.17),80)
 }
@@ -355,6 +357,15 @@ light('Face shadow softener',(-.25,-2.8,2.6),(-1,0,2.4),250,(.85,.87,1),3)
 for name in ('CHARACTER_MALE','BEDROOM_SET','MEDICINE_CABINET'):
     try:COL[name].asset_mark()
     except Exception:pass
+# Geometry QA before saving and preview renders.
+for n in ('CTRL_ROOT__move_character','CTRL_HEAD__rotate_expression',
+          'Head stylized sculpt','Eye white -1','Eye white 1',
+          'Hair scalp','Torso chest','Bedside lamp base'):
+    o=bpy.data.objects.get(n)
+    if o:
+        print('OBJECT_QA', n, 'center=',[round(v,3) for v in o.matrix_world.translation],
+              'dimensions=',[round(v,3) for v in o.dimensions],
+              'parent=',o.parent.name if o.parent else 'none')
 scene.frame_start=1;scene.frame_end=150;scene.frame_set(1)
 scene.camera=cams['bedroom_wide']
 bpy.ops.wm.save_as_mainfile(filepath=str(OUT/'BlenderMedi_stylized_assets.blend'))
