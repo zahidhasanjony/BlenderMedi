@@ -12,7 +12,14 @@ OUT.mkdir(parents=True, exist_ok=True)
 bpy.ops.object.select_all(action='SELECT')
 bpy.ops.object.delete(use_global=False)
 scene=bpy.context.scene
-scene.render.engine='BLENDER_EEVEE'
+scene.render.engine=os.getenv('RENDER_ENGINE','CYCLES')
+if scene.render.engine=='CYCLES':
+    scene.cycles.samples=int(os.getenv('SAMPLES','8'))
+    # Ubuntu's Blender package may not have OpenImageDenoiser.
+    scene.cycles.use_denoising=False
+    for view_layer in scene.view_layers:
+        if hasattr(view_layer, 'cycles') and hasattr(view_layer.cycles, 'use_denoising'):
+            view_layer.cycles.use_denoising=False
 scene.render.resolution_x=1920
 scene.render.resolution_y=1080
 scene.render.resolution_percentage=45
