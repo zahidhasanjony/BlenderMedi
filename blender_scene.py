@@ -12,7 +12,14 @@ bpy.ops.object.delete(use_global=False)
 sc=bpy.context.scene
 sc.render.engine="CYCLES"
 sc.cycles.samples=int(os.getenv("SAMPLES","8"))
-sc.cycles.use_denoising=True
+# The Ubuntu Blender package used in GitHub Actions may be built without OIDN.
+# Explicitly disable BOTH final-render and view-layer denoising so Cycles
+# works on headless CPU-only runners without OpenImageDenoiser.
+sc.cycles.use_denoising=False
+for layer in sc.view_layers:
+ if hasattr(layer, "cycles") and hasattr(layer.cycles, "use_denoising"):
+  layer.cycles.use_denoising=False
+print("Cloud renderer: Cycles denoising disabled (OIDN not required)")
 sc.render.resolution_x=1280
 sc.render.resolution_y=720
 sc.render.resolution_percentage=int(os.getenv("SCALE","60"))
